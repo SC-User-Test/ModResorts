@@ -249,28 +249,67 @@ public class WeatherServlet extends HttpServlet {
     return "*********" + lastToKeep;
   }
 
+  /**
+   * Container-native environment discovery using standard Java system properties
+   * Replaces WebSphere-specific ServerName API
+   */
   private String configureEnvDiscovery() {
-
     String serverEnv = "";
-
-    serverEnv += com.ibm.websphere.runtime.ServerName.getDisplayName();
-    serverEnv += com.ibm.websphere.runtime.ServerName.getFullName();
-
+    
+    // Use container-agnostic environment variables and system properties
+    String serverName = System.getenv("SERVER_NAME");
+    if (serverName == null) {
+      serverName = System.getProperty("server.name", "unknown");
+    }
+    
+    String hostName = System.getenv("HOSTNAME");
+    if (hostName == null) {
+      try {
+        hostName = java.net.InetAddress.getLocalHost().getHostName();
+      } catch (Exception e) {
+        hostName = "unknown";
+      }
+    }
+    
+    serverEnv += serverName + ":" + hostName;
+    
     return serverEnv;
   }
 
+  /**
+   * Container-native JNDI configuration
+   * Replaces WebSphere-specific WsnInitialContextFactory with standard approach
+   */
   private InitialContext setInitialContextProps() {
-
-    Hashtable ht = new Hashtable();
-
-    ht.put("java.naming.factory.initial", "com.ibm.websphere.naming.WsnInitialContextFactory");
-    ht.put("java.naming.provider.url", "corbaloc:iiop:localhost:2809");
+    Hashtable<String, String> ht = new Hashtable<>();
+    
+    // Use container-agnostic JNDI configuration from environment variables
+    String jndiFactory = System.getenv("JNDI_FACTORY");
+    String jndiProviderUrl = System.getenv("JNDI_PROVIDER_URL");
+    
+    if (jndiFactory != null && !jndiFactory.isEmpty()) {
+      ht.put("java.naming.factory.initial", jndiFactory);
+    }
+    
+    if (jndiProviderUrl != null && !jndiProviderUrl.isEmpty()) {
+      ht.put("java.naming.provider.url", jndiProviderUrl);
+    }
 
     InitialContext ctx = null;
     try {
-      ctx = new InitialContext(ht);
+      // If no environment variables set, use default InitialContext
+      if (ht.isEmpty()) {
+        ctx = new InitialContext();
+      } else {
+        ctx = new InitialContext(ht);
+      }
     } catch (NamingException e) {
-      e.printStackTrace();
+      logger.log(Level.WARNING, "Failed to create InitialContext, using default", e);
+      try {
+        ctx = new InitialContext();
+      } catch (NamingException ex) {
+        e.printStackTrace();
+      }
     }
 
     return ctx;
