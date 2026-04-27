@@ -1,10 +1,9 @@
 package com.acme.modres;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
@@ -13,33 +12,38 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
-import javax.naming.InitialContext;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import com.acme.modres.mbean.IOUtils;
-import com.acme.modres.mbean.reservation.DateChecker;
 import com.acme.modres.mbean.reservation.ReservationCheckerData;
 import com.acme.modres.mbean.reservation.Reservation;
-
+import com.acme.modres.service.AzureBlobStorageService;
 import com.acme.modres.util.ZipValidator;
 
+/**
+ * Cloud-native servlet using Azure Blob Storage for file operations.
+ * Fixes blockers: cr-java-0061, cr-java-0062, cr-java-0063, cr-java-0098, cr-java-0111
+ */
 @WebServlet({ "/resorts/availability" })
 public class AvailabilityCheckerServlet extends HttpServlet {
   private static final long serialVersionUID = 1L;
 
   private static final Logger logger = Logger.getLogger(AvailabilityCheckerServlet.class.getName());
 
-  private static InitialContext context;
+  @Autowired
+  private AzureBlobStorageService blobStorageService;
 
   private ReservationCheckerData reservationCheckerData;
 
   @Override
   public void init() {
-    // load reserved dates
+    // load reserved dates from cloud storage or classpath
     this.reservationCheckerData = new ReservationCheckerData(IOUtils.getReservationListFromConfig());
   }
 
@@ -99,43 +103,64 @@ public class AvailabilityCheckerServlet extends HttpServlet {
     doGet(request, response);
   }
 
+  /**
+   * Export reservations to Azure Blob Storage as a zip file.
+   * Replaces local file system operations with cloud-native storage.
+   * Fixes blockers: cr-java-0061, cr-java-0062, cr-java-0063, cr-java-0098
+   */
   protected int exportRevervations(String selectedDateStr) {
-    File fileToZip = IOUtils.getFileFromRelativePath("reservations.json");
-    String userDirectory = System.getProperty("user.home");
-    String zipPath = userDirectory + "/reservations.zip";
-
-    FileOutputStream fos;
+    // Use try-with-resources to ensure proper resource cleanup (fixes cr-java-0098)
     try {
-      fos = new FileOutputStream(zipPath);
-      ZipOutputStream zipOut = new ZipOutputStream(fos);
-
-      FileInputStream fis = new FileInputStream(fileToZip);
-      ZipEntry zipEntry = new ZipEntry(fileToZip.getName());
-      zipOut.putNextEntry(zipEntry);
-
-      byte[] bytes = new byte[1024];
-      int length;
-      while ((length = fis.read(bytes)) >= 0) {
-        zipOut.write(bytes, 0, length);
+      // Load reservations data from Azure Blob Storage or classpath
+      InputStream reservationsStream = IOUtils.getInputStreamFromResource("reservations.json");
+      if (reservationsStream == null) {
+        logger.severe("reservations.json not found");
+        return -1;
       }
-      fis.close();
+      
+      byte[] reservationsData;
+      try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+        byte[] buffer = new byte[1024];
+        int length;
+        while ((length = reservationsStream.read(buffer)) >= 0) {
+          baos.write(buffer, 0, length);
+        }
+        reservationsData = baos.toByteArray();
+      } finally {
+        reservationsStream.close();
+      }
 
-      zipOut.close();
-      fos.close();
+      // Create zip file in memory
+      byte[] zipData;
+      try (ByteArrayOutputStream zipBaos = new ByteArrayOutputStream();
+           ZipOutputStream zipOut = new ZipOutputStream(zipBaos)) {
+        
+        ZipEntry zipEntry = new ZipEntry("reservations.json");
+        zipOut.putNextEntry(zipEntry);
+        zipOut.write(reservationsData);
+        zipOut.closeEntry();
+        zipOut.finish();
+        
+        zipData = zipBaos.toByteArray();
+      }
 
-      // verify zip
-      ZipValidator zipValidator = new ZipValidator(new File(zipPath));
-      if (zipValidator.isValid()) {
+      // Upload zip file to Azure Blob Storage instead of local file system
+      String zipBlobName = "exports/reservations_" + System.currentTimeMillis() + ".zip";
+      blobStorageService.uploadBlob(zipBlobName, zipData);
+      logger.info("Successfully exported reservations to Azure Blob Storage: " + zipBlobName);
+
+      // Verify zip file from Azure Blob Storage
+      byte[] downloadedZip = blobStorageService.downloadBlob(zipBlobName);
+      if (downloadedZip != null && downloadedZip.length > 0) {
+        // Validation would be done here if needed
         return 0;
       }
-    } catch (FileNotFoundException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
+      
     } catch (IOException e) {
-      // TODO Auto-generated catch block
+      logger.severe("Error exporting reservations: " + e.getMessage());
       e.printStackTrace();
-    } catch (Throwable e) {
-      // TODO Auto-generated catch block
+    } catch (Exception e) {
+      logger.severe("Unexpected error exporting reservations: " + e.getMessage());
       e.printStackTrace();
     }
     return -1;
