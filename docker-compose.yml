@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  modresorts-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: modresorts:latest
+    container_name: modresorts-app
+    ports:
+      - "8080:8080"
+    environment:
+      # JVM Configuration
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+      - CATALINA_OPTS=-Duser.timezone=UTC
+      
+      # Application Configuration
+      - APP_ENV=docker
+      - APP_VERSION=2.0.0
+      
+      # External Service Configuration (to be provided by infrastructure)
+      # Uncomment and configure these when connecting to external services
+      # - DB_HOST=database-host
+      # - DB_PORT=5432
+      # - DB_NAME=modresorts
+      # - DB_USER=modresorts_user
+      # - DB_PASSWORD=changeme
+      
+    volumes:
+      # Mount logs directory for persistence
+      - ./logs:/usr/local/tomcat/logs
+      
+      # Mount configuration directory (optional)
+      # - ./config:/usr/local/tomcat/conf/custom
+      
+    networks:
+      - modresorts-network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  modresorts-network:
+    driver: bridge
+
+# Note: This docker-compose.yml contains ONLY the application service.
+# External services (databases, message queues, caches) should be provided separately
+# and connected via environment variables or service discovery.
