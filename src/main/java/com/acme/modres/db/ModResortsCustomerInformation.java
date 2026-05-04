@@ -1,5 +1,6 @@
 package com.acme.modres.db;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import javax.ejb.Singleton;
 import javax.ejb.Startup;
@@ -9,7 +10,19 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Migrated from singleton state storage to support distributed caching.
+ * In production, integrate with Amazon ElastiCache (Redis) using Spring Cache abstraction
+ * for consistency across horizontally scaled container instances.
+ * 
+ * For now, using ConcurrentHashMap as a placeholder. In containerized deployment:
+ * 1. Add spring-boot-starter-data-redis dependency
+ * 2. Configure Redis connection via environment variables (REDIS_HOST, REDIS_PORT)
+ * 3. Use @Cacheable annotations for distributed caching
+ */
 @Singleton
 @Startup
 public class ModResortsCustomerInformation {
@@ -19,7 +32,24 @@ public class ModResortsCustomerInformation {
   // @Resource(lookup = "jdbc/ModResortsJndi")
   private DataSource dataSource;
 
+  // Replaced singleton state with cache that can be externalized to Redis
+  // In production: Use Spring Cache with Redis backend
+  private Map<String, ArrayList<String>> customerCache = new ConcurrentHashMap<>();
+  
+  @PostConstruct
+  public void init() {
+    // Initialize cache - in production this would connect to Redis
+    // Configuration via environment variables:
+    // REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
+  }
+
   public ArrayList<String> getCustomerInformation() {
+    // Check cache first (in production, this would be Redis)
+    String cacheKey = "all_customers";
+    if (customerCache.containsKey(cacheKey)) {
+      return customerCache.get(cacheKey);
+    }
+
     Connection conn = null;
     PreparedStatement stmt = null;
     ResultSet rs = null;
@@ -39,6 +69,9 @@ public class ModResortsCustomerInformation {
         customerInfo.add(info);
       }
 
+      // Store in cache (in production, this would be Redis with TTL)
+      customerCache.put(cacheKey, customerInfo);
+
     } catch (SQLException e) {
       e.printStackTrace();
     } finally {
@@ -55,5 +88,13 @@ public class ModResortsCustomerInformation {
       }
     }
     return customerInfo;
+  }
+  
+  /**
+   * Clear cache - useful for cache invalidation
+   * In production with Redis, use cache eviction strategies
+   */
+  public void clearCache() {
+    customerCache.clear();
   }
 }
