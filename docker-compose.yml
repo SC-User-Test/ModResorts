@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  modresorts-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: modresorts:latest
+    container_name: modresorts-app
+    ports:
+      - "8080:8080"
+    environment:
+      # JVM Configuration
+      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+      # Application Configuration
+      - APP_NAME=ModResorts
+      - APP_VERSION=2.0.0
+      - TZ=UTC
+      # External Service Configuration (customize as needed)
+      - DATABASE_URL=${DATABASE_URL:-jdbc:postgresql://localhost:5432/modresorts}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-modresorts}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-changeme}
+    volumes:
+      # Mount logs directory for persistence
+      - ./logs:/usr/local/tomcat/logs
+      # Mount configuration directory (optional)
+      - ./config:/usr/local/tomcat/conf/Catalina/localhost
+    networks:
+      - modresorts-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  modresorts-network:
+    driver: bridge
+
+volumes:
+  logs:
+  config:

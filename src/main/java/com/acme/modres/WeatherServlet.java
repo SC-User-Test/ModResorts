@@ -13,7 +13,6 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
-import java.util.Hashtable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,8 +34,6 @@ import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
 import javax.servlet.annotation.WebServlet;
 
 @WebServlet({ "/resorts/weather" })
@@ -52,8 +49,6 @@ public class WeatherServlet extends HttpServlet {
   private static final String WEATHER_API_KEY = "WEATHER_API_KEY";
 
   private static final Logger logger = Logger.getLogger(WeatherServlet.class.getName());
-
-  private static InitialContext context;
 
   MBeanServer server;
   ObjectName weatherON;
@@ -75,7 +70,6 @@ public class WeatherServlet extends HttpServlet {
     } catch (InstanceAlreadyExistsException | MBeanRegistrationException | NotCompliantMBeanException e) {
       e.printStackTrace();
     }
-    context = setInitialContextProps();
   }
 
   @Override
@@ -249,30 +243,40 @@ public class WeatherServlet extends HttpServlet {
     return "*********" + lastToKeep;
   }
 
+  /**
+   * Replaced WebSphere-specific ServerName API with environment variable approach
+   * for container-native deployment. Server name should be configured via 
+   * SERVER_NAME and SERVER_FULL_NAME environment variables.
+   */
   private String configureEnvDiscovery() {
-
     String serverEnv = "";
-
-    serverEnv += com.ibm.websphere.runtime.ServerName.getDisplayName();
-    serverEnv += com.ibm.websphere.runtime.ServerName.getFullName();
-
+    
+    // Replace WebSphere-specific APIs with environment variables
+    String displayName = System.getenv("SERVER_DISPLAY_NAME");
+    String fullName = System.getenv("SERVER_FULL_NAME");
+    
+    if (displayName != null) {
+      serverEnv += displayName;
+    }
+    if (fullName != null) {
+      serverEnv += fullName;
+    }
+    
     return serverEnv;
   }
 
-  private InitialContext setInitialContextProps() {
-
-    Hashtable ht = new Hashtable();
-
-    ht.put("java.naming.factory.initial", "com.ibm.websphere.naming.WsnInitialContextFactory");
-    ht.put("java.naming.provider.url", "corbaloc:iiop:localhost:2809");
-
-    InitialContext ctx = null;
-    try {
-      ctx = new InitialContext(ht);
-    } catch (NamingException e) {
-      e.printStackTrace();
-    }
-
-    return ctx;
+  /**
+   * Removed RMI/IIOP-based InitialContext configuration.
+   * For containerized deployments, use REST APIs or message queues instead of RMI.
+   * Service discovery should be handled via environment variables or service mesh.
+   * This method is deprecated and should not be used in container environments.
+   */
+  @Deprecated
+  private void setInitialContextProps() {
+    // RMI/IIOP removed - not compatible with containerized environments
+    // Use REST APIs with service discovery (AWS Cloud Map, Consul, etc.)
+    // or message-based communication (SQS, SNS, Kafka) instead
+    logger.warning("RMI-based communication is not supported in containerized environments. " +
+                   "Please migrate to REST APIs or message-based communication.");
   }
 }
