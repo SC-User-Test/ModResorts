@@ -1,0 +1,81 @@
+# Docker ignore file for ModResorts Java application
+# Exclude build artifacts and unnecessary files from Docker context
+
+# Maven build artifacts
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Maven wrapper files (CRITICAL: excluded - use system mvn only)
+mvnw
+mvnw.cmd
+.mvn/
+
+# Gradle build artifacts
+.gradle/
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# Gradle wrapper files (CRITICAL: excluded - use system gradle only)
+gradlew
+gradlew.bat
+gradle/wrapper/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# Documentation and metadata
+*.md
+README*
+LICENSE
+CONTRIBUTING*
+CODEOWNERS
+docs/
+migration-bundle/
+
+# Logs
+*.log
+logs/
+
+# Test files
+src/test/
+
+# Docker files (don't copy into image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Scripts
+scripts/
+
+# ECS deployment files
+ecs/
