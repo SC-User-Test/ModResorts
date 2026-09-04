@@ -1,6 +1,7 @@
 package com.acme.modres.db;
 
 import jakarta.annotation.Resource;
+import jakarta.annotation.sql.DataSourceDefinition;
 import jakarta.ejb.Singleton;
 import jakarta.ejb.Startup;
 import javax.sql.DataSource;
@@ -10,13 +11,37 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 
+/**
+ * Provides customer information from the PostgreSQL database.
+ *
+ * Migrated from SQL Server to PostgreSQL 16:
+ * - DataSource lookup updated to use PostgreSQL driver (org.postgresql.ds.PGSimpleDataSource)
+ * - SQL query updated to use lowercase table/column names (PostgreSQL is case-sensitive by default)
+ * - @DataSourceDefinition added for container-managed PostgreSQL datasource configuration
+ * - javax.sql.DataSource retained (still valid in Jakarta EE 10 via JDK)
+ */
 @Singleton
 @Startup
+@DataSourceDefinition(
+    name = "java:app/jdbc/ModResortsDS",
+    className = "org.postgresql.ds.PGSimpleDataSource",
+    serverName = "${env.PGHOST:localhost}",
+    portNumber = 5432,
+    databaseName = "${env.PGDATABASE:modresorts}",
+    user = "${env.PGUSER:postgres}",
+    password = "${env.PGPASSWORD:}",
+    properties = {
+        "connectionTimeout=30",
+        "ssl=false"
+    }
+)
 public class ModResortsCustomerInformation {
-  private static final String SELECT_CUSTOMERS_QUERY = "SELECT INFO FROM CUSTOMER";
 
-  // Removing DB connection for ease of demo setup
-  // @Resource(lookup = "jdbc/ModResortsJndi")
+  // PostgreSQL-compatible query: lowercase table/column names
+  // (PostgreSQL treats unquoted identifiers as lowercase; SQL Server is case-insensitive)
+  private static final String SELECT_CUSTOMERS_QUERY = "SELECT info FROM customer";
+
+  @Resource(lookup = "java:app/jdbc/ModResortsDS")
   private DataSource dataSource;
 
   public ArrayList<String> getCustomerInformation() {
@@ -35,7 +60,7 @@ public class ModResortsCustomerInformation {
 
       // Process the results
       while (rs.next()) {
-        String info = rs.getString("INFO");
+        String info = rs.getString("info");
         customerInfo.add(info);
       }
 
